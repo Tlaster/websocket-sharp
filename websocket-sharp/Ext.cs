@@ -62,7 +62,7 @@ namespace WebSocketSharp
   /// <summary>
   /// Provides a set of static methods for websocket-sharp.
   /// </summary>
-  public static class Ext
+  internal static class Ext
   {
     #region Private Fields
 
