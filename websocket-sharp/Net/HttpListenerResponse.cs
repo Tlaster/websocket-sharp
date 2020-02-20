@@ -8,7 +8,7 @@
  * The MIT License
  *
  * Copyright (c) 2005 Novell, Inc. (http://www.novell.com)
- * Copyright (c) 2012-2015 sta.blockhead
+ * Copyright (c) 2012-2020 sta.blockhead
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -53,10 +53,11 @@ using System.Text;
 namespace WebSocketSharp.Net
 {
   /// <summary>
-  /// Provides the access to a response to a request received by the <see cref="HttpListener"/>.
+  /// Represents an HTTP response to an HTTP request received by
+  /// a <see cref="HttpListener"/> instance.
   /// </summary>
   /// <remarks>
-  /// The HttpListenerResponse class cannot be inherited.
+  /// This class cannot be inherited.
   /// </remarks>
   public sealed class HttpListenerResponse : IDisposable
   {
@@ -406,7 +407,7 @@ namespace WebSocketSharp.Net
     }
 
     /// <summary>
-    /// Gets or sets the collection of HTTP headers sent to the client.
+    /// Gets or sets the collection of the HTTP headers sent to the client.
     /// </summary>
     /// <value>
     /// A <see cref="WebHeaderCollection"/> that contains the headers sent to
@@ -820,6 +821,25 @@ namespace WebSocketSharp.Net
       _context.Connection.Close (force);
     }
 
+    private void close (byte[] responseEntity, int bufferLength, bool willBlock)
+    {
+      var stream = OutputStream;
+
+      if (willBlock) {
+        stream.WriteBytes (responseEntity, bufferLength);
+        close (false);
+
+        return;
+      }
+
+      stream.WriteBytesAsync (
+        responseEntity,
+        bufferLength,
+        () => close (false),
+        null
+      );
+    }
+
     private static string createContentTypeHeaderText (
       string value, Encoding encoding
     )
@@ -961,8 +981,8 @@ namespace WebSocketSharp.Net
     /// An array of <see cref="byte"/> that contains the entity body data.
     /// </param>
     /// <param name="willBlock">
-    /// <c>true</c> if this method blocks execution while flushing the stream to
-    /// the client; otherwise, <c>false</c>.
+    /// <c>true</c> if this method blocks execution while flushing the stream
+    /// to the client; otherwise, <c>false</c>.
     /// </param>
     /// <exception cref="ArgumentNullException">
     /// <paramref name="responseEntity"/> is <see langword="null"/>.
@@ -980,22 +1000,28 @@ namespace WebSocketSharp.Net
       if (responseEntity == null)
         throw new ArgumentNullException ("responseEntity");
 
-      var len = responseEntity.Length;
-      var output = OutputStream;
+      var len = responseEntity.LongLength;
+
+      if (len > Int32.MaxValue) {
+        close (responseEntity, 1024, willBlock);
+        return;
+      }
+
+      var stream = OutputStream;
 
       if (willBlock) {
-        output.Write (responseEntity, 0, len);
+        stream.Write (responseEntity, 0, (int) len);
         close (false);
 
         return;
       }
 
-      output.BeginWrite (
+      stream.BeginWrite (
         responseEntity,
         0,
-        len,
+        (int) len,
         ar => {
-          output.EndWrite (ar);
+          stream.EndWrite (ar);
           close (false);
         },
         null
@@ -1071,8 +1097,10 @@ namespace WebSocketSharp.Net
     /// </exception>
     public void Redirect (string url)
     {
-      if (_disposed)
-        throw new ObjectDisposedException (GetType ().ToString ());
+      if (_disposed) {
+        var name = GetType ().ToString ();
+        throw new ObjectDisposedException (name);
+      }
 
       if (_headersSent) {
         var msg = "The response is already being sent.";
@@ -1082,12 +1110,16 @@ namespace WebSocketSharp.Net
       if (url == null)
         throw new ArgumentNullException ("url");
 
-      if (url.Length == 0)
-        throw new ArgumentException ("An empty string.", "url");
+      if (url.Length == 0) {
+        var msg = "An empty string.";
+        throw new ArgumentException (msg, "url");
+      }
 
       Uri uri;
-      if (!Uri.TryCreate (url, UriKind.Absolute, out uri))
-        throw new ArgumentException ("Not an absolute URL.", "url");
+      if (!Uri.TryCreate (url, UriKind.Absolute, out uri)) {
+        var msg = "Not an absolute URL.";
+        throw new ArgumentException (msg, "url");
+      }
 
       _redirectLocation = uri;
       _statusCode = 302;
