@@ -3998,7 +3998,7 @@ namespace WebSocketSharp
           throw new ArgumentException (msg, "url");
         }
 
-        if (uri.Scheme != "http") {
+        if (uri.Scheme != "http" && uri.Scheme != "https") {
           msg = "The scheme part is not http.";
           throw new ArgumentException (msg, "url");
         }
